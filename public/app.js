@@ -2,11 +2,11 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
-let IS_LOCAL_MODE = true;
 let SERVER_URL = localStorage.getItem('retrack_server_url') || '';
 let AUTH_TOKEN = localStorage.getItem('retrack_auth_token') || '';
 let CURRENT_USER = localStorage.getItem('retrack_username') || '';
 let CURRENT_ROLE = localStorage.getItem('retrack_role') || '';
+let IS_LOCAL_MODE = !Boolean(SERVER_URL);
 
 let currentLang = localStorage.getItem('retrack_lang') || 'de';
 let deferredPrompt, selectedQrFile = null, originalUploadFile = null, fullScreenshotUrl = null, currentCroppedQrDataUrl = null;
@@ -126,67 +126,130 @@ function getAuthHeaders() {
     return headers;
 }
 
+function updateAuthUiBoxes(requireSetup = false) {
+    const setupBox = document.getElementById('setupAdminBox');
+    const loginBox = document.getElementById('loginBox');
+    const loggedInBox = document.getElementById('loggedInBox');
+    const adminBox = document.getElementById('adminUsersBox');
+
+    setupBox.classList.add('hidden');
+    loginBox.classList.add('hidden');
+    loggedInBox.classList.add('hidden');
+    adminBox.classList.add('hidden');
+
+    if (IS_LOCAL_MODE) return;
+
+    if (requireSetup) {
+        setupBox.classList.remove('hidden');
+    } else if (AUTH_TOKEN) {
+        loggedInBox.classList.remove('hidden');
+        document.getElementById('currentUserSpan').textContent = CURRENT_USER;
+        if (CURRENT_ROLE === 'admin') adminBox.classList.remove('hidden');
+    } else {
+        loginBox.classList.remove('hidden');
+    }
+}
+
+// Wird NUR aufgerufen, wenn der Nutzer aktiv auf den "Verbinden"-Button klickt
 async function pingServer() {
-    const inputUrl = document.getElementById('setServerUrl').value.trim();
-    const statusEl = document.getElementById('serverStatusText');
-    statusEl.classList.remove('hidden');
+    const urlInput = document.getElementById('setServerUrl');
+    const inputUrl = urlInput ? urlInput.value.trim() : '';
 
     if (!inputUrl) {
-        SERVER_URL = ''; AUTH_TOKEN = ''; CURRENT_ROLE = '';
+        SERVER_URL = ''; AUTH_TOKEN = ''; CURRENT_USER = ''; CURRENT_ROLE = '';
         localStorage.removeItem('retrack_server_url');
         localStorage.removeItem('retrack_auth_token');
+        localStorage.removeItem('retrack_username');
         localStorage.removeItem('retrack_role');
         IS_LOCAL_MODE = true;
-        statusEl.textContent = 'Lokaler Offline-Modus aktiv.';
-        statusEl.className = 'text-xs font-medium text-emerald-400 mt-1';
-        document.getElementById('setupAdminBox').classList.add('hidden');
-        document.getElementById('loginBox').classList.add('hidden');
-        document.getElementById('loggedInBox').classList.add('hidden');
-        document.getElementById('adminUsersBox').classList.add('hidden');
+        
+        const statusEl = document.getElementById('serverStatusText');
+        if (statusEl) {
+            statusEl.classList.remove('hidden');
+            statusEl.textContent = 'Lokaler Offline-Modus aktiv.';
+            statusEl.className = 'text-xs font-medium text-emerald-400 mt-1';
+        }
+        updateAuthUiBoxes();
         loadReturns();
         return;
     }
 
-    statusEl.textContent = 'Prüfe Verbindung...';
-    statusEl.className = 'text-xs font-medium text-amber-400 mt-1';
+    await verifyServerConnection(inputUrl);
+}
+
+// Sichere Hintergrund-Prüfung ohne ungewolltes Löschen des Tokens
+async function verifyServerConnection(targetUrl) {
+    const statusEl = document.getElementById('serverStatusText');
+    const urlInput = document.getElementById('setServerUrl');
+    if (urlInput && targetUrl) urlInput.value = targetUrl;
+
+    if (statusEl) {
+        statusEl.classList.remove('hidden');
+        statusEl.textContent = 'Prüfe Verbindung...';
+        statusEl.className = 'text-xs font-medium text-amber-400 mt-1';
+    }
 
     try {
-        const res = await fetch(inputUrl.replace(/\/$/, '') + '/api/ping');
+        const cleanUrl = targetUrl.replace(/\/$/, '');
+        const res = await fetch(cleanUrl + '/api/ping');
         if (!res.ok) throw new Error();
         const data = await res.json();
         
-        SERVER_URL = inputUrl;
+        SERVER_URL = cleanUrl;
         localStorage.setItem('retrack_server_url', SERVER_URL);
         IS_LOCAL_MODE = false;
         
-        statusEl.textContent = 'Server gefunden!';
-        statusEl.className = 'text-xs font-medium text-emerald-400 mt-1';
+        if (statusEl) {
+            statusEl.textContent = 'Server verbunden!';
+            statusEl.className = 'text-xs font-medium text-emerald-400 mt-1';
+        }
 
         if (data.requireSetup) {
-            document.getElementById('setupAdminBox').classList.remove('hidden');
-            document.getElementById('loginBox').classList.add('hidden');
-            document.getElementById('loggedInBox').classList.add('hidden');
-            document.getElementById('adminUsersBox').classList.add('hidden');
+            updateAuthUiBoxes(true);
         } else if (AUTH_TOKEN) {
             const test = await fetch(getApiUrl('/api/returns'), { headers: getAuthHeaders() });
             if (test.ok) {
-                document.getElementById('loggedInBox').classList.remove('hidden');
-                document.getElementById('currentUserSpan').textContent = CURRENT_USER;
-                document.getElementById('loginBox').classList.add('hidden');
-                if (CURRENT_ROLE === 'admin') document.getElementById('adminUsersBox').classList.remove('hidden');
+                updateAuthUiBoxes(false);
                 checkMigration();
+            } else if (test.status === 401) {
+                // Nur ausloggen, wenn der Server den Token explizit als ungültig ablehnt (401)
+                clearSessionState();
+                updateAuthUiBoxes(false);
             } else {
-                logoutUser();
+                updateAuthUiBoxes(false);
             }
         } else {
-            document.getElementById('loginBox').classList.remove('hidden');
-            document.getElementById('setupAdminBox').classList.add('hidden');
+            updateAuthUiBoxes(false);
         }
-        loadReturns();
+        await loadReturns();
     } catch (e) {
-        statusEl.textContent = 'Fehler: Server nicht erreichbar oder falsche URL.';
-        statusEl.className = 'text-xs font-medium text-red-400 mt-1';
+        if (statusEl) {
+            statusEl.textContent = 'Fehler: Server nicht erreichbar oder falsche URL.';
+            statusEl.className = 'text-xs font-medium text-red-400 mt-1';
+        }
+        // Token bei kurzem Netzwerkfehler NICHT löschen!
+        updateAuthUiBoxes(false);
+        await loadReturns();
     }
+}
+
+function clearSessionState() {
+    AUTH_TOKEN = ''; CURRENT_USER = ''; CURRENT_ROLE = '';
+    localStorage.removeItem('retrack_auth_token');
+    localStorage.removeItem('retrack_username');
+    localStorage.removeItem('retrack_role');
+}
+
+function saveSessionState(data) {
+    AUTH_TOKEN = data.token;
+    CURRENT_USER = data.username;
+    CURRENT_ROLE = data.role;
+    localStorage.setItem('retrack_auth_token', AUTH_TOKEN);
+    localStorage.setItem('retrack_username', CURRENT_USER);
+    localStorage.setItem('retrack_role', CURRENT_ROLE);
+    if (SERVER_URL) localStorage.setItem('retrack_server_url', SERVER_URL);
+    IS_LOCAL_MODE = false;
+    updateAuthUiBoxes(false);
 }
 
 async function setupAdmin() {
@@ -198,19 +261,9 @@ async function setupAdmin() {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p })
         });
         const data = await res.json();
-        if (res.ok) {
-            // Auto-Login Logik
-            AUTH_TOKEN = data.token; CURRENT_USER = data.username; CURRENT_ROLE = data.role;
-            localStorage.setItem('retrack_auth_token', AUTH_TOKEN);
-            localStorage.setItem('retrack_username', CURRENT_USER);
-            localStorage.setItem('retrack_role', CURRENT_ROLE);
-            
-            document.getElementById('setupAdminBox').classList.add('hidden');
-            document.getElementById('loggedInBox').classList.remove('hidden');
-            document.getElementById('currentUserSpan').textContent = CURRENT_USER;
-            if (CURRENT_ROLE === 'admin') document.getElementById('adminUsersBox').classList.remove('hidden');
-            
-            loadReturns();
+        if (res.ok && data.token) {
+            saveSessionState(data);
+            await loadReturns();
             checkMigration();
         } else {
             alert('Fehler beim Erstellen: ' + (data.error || 'Unbekannt'));
@@ -227,19 +280,9 @@ async function registerUser() {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p })
         });
         const data = await res.json();
-        if (res.ok) {
-            AUTH_TOKEN = data.token; CURRENT_USER = data.username; CURRENT_ROLE = data.role;
-            localStorage.setItem('retrack_auth_token', AUTH_TOKEN);
-            localStorage.setItem('retrack_username', CURRENT_USER);
-            localStorage.setItem('retrack_role', CURRENT_ROLE);
-
-            document.getElementById('loginBox').classList.add('hidden');
-            document.getElementById('loggedInBox').classList.remove('hidden');
-            document.getElementById('currentUserSpan').textContent = CURRENT_USER;
-
-            if (CURRENT_ROLE === 'admin') document.getElementById('adminUsersBox').classList.remove('hidden');
-
-            loadReturns();
+        if (res.ok && data.token) {
+            saveSessionState(data);
+            await loadReturns();
             checkMigration();
         } else {
             alert('Fehler: ' + (data.error || 'Registrierung fehlgeschlagen.'));
@@ -257,29 +300,16 @@ async function loginUser() {
         });
         if (!res.ok) throw new Error('Falsche Zugangsdaten');
         const data = await res.json();
-        AUTH_TOKEN = data.token; CURRENT_USER = data.username; CURRENT_ROLE = data.role;
-        localStorage.setItem('retrack_auth_token', AUTH_TOKEN);
-        localStorage.setItem('retrack_username', CURRENT_USER);
-        localStorage.setItem('retrack_role', CURRENT_ROLE);
-        
-        document.getElementById('loginBox').classList.add('hidden');
-        document.getElementById('loggedInBox').classList.remove('hidden');
-        document.getElementById('currentUserSpan').textContent = CURRENT_USER;
-        
-        if (CURRENT_ROLE === 'admin') document.getElementById('adminUsersBox').classList.remove('hidden');
-        
-        loadReturns();
+        saveSessionState(data);
+        await loadReturns();
         checkMigration();
     } catch (e) { alert(e.message); }
 }
 
 function logoutUser() {
     if (AUTH_TOKEN) fetch(getApiUrl('/api/auth/logout'), { method: 'POST', headers: getAuthHeaders() }).catch(()=>{});
-    AUTH_TOKEN = ''; CURRENT_USER = ''; CURRENT_ROLE = '';
-    localStorage.removeItem('retrack_auth_token'); localStorage.removeItem('retrack_username'); localStorage.removeItem('retrack_role');
-    document.getElementById('loggedInBox').classList.add('hidden');
-    document.getElementById('adminUsersBox').classList.add('hidden');
-    document.getElementById('loginBox').classList.remove('hidden');
+    clearSessionState();
+    updateAuthUiBoxes(false);
     loadReturns();
 }
 
@@ -336,8 +366,15 @@ async function checkMigration() {
 
 async function apiGetReturns() {
     if (!IS_LOCAL_MODE && AUTH_TOKEN) {
-        const res = await fetch(getApiUrl('/api/returns'), { headers: getAuthHeaders() });
-        if (res.ok) return await res.json();
+        try {
+            const res = await fetch(getApiUrl('/api/returns'), { headers: getAuthHeaders() });
+            if (res.ok) return await res.json();
+            if (res.status === 401) {
+                clearSessionState();
+                updateAuthUiBoxes(false);
+            }
+        } catch (e) {}
+        return [];
     }
     if (!IS_LOCAL_MODE && !AUTH_TOKEN) return [];
     
@@ -352,8 +389,10 @@ async function apiGetReturns() {
 
 async function apiGetSettings() {
     if (!IS_LOCAL_MODE && AUTH_TOKEN) {
-        const res = await fetch(getApiUrl('/api/settings'), { headers: getAuthHeaders() });
-        if (res.ok) return await res.json();
+        try {
+            const res = await fetch(getApiUrl('/api/settings'), { headers: getAuthHeaders() });
+            if (res.ok) return await res.json();
+        } catch (e) {}
     }
     const db = await openLocalDb();
     return new Promise((resolve) => {
@@ -405,7 +444,10 @@ async function saveReturn() {
             });
             tx.oncomplete = () => resolve();
         });
-    } else { return alert("Bitte zuerst einloggen"); }
+    } else {
+        setFilter('settings');
+        return alert("Bitte melde dich zuerst in den Einstellungen am Server an.");
+    }
     
     resetForm(); loadReturns();
 }
@@ -624,8 +666,17 @@ function setFilter(f) {
         if (btn) btn.className = k === f ? 'flex-1 bg-blue-600 text-white font-semibold px-2.5 py-2 rounded-lg text-xs transition shadow-md' : 'flex-1 text-slate-400 hover:text-slate-200 font-medium px-2.5 py-2 rounded-lg text-xs transition';
     });
     const mainView = document.getElementById('mainView'); const settingsView = document.getElementById('settingsView');
-    if (f === 'settings') { mainView.classList.add('hidden'); settingsView.classList.remove('hidden'); document.getElementById('setServerUrl').value = SERVER_URL; if (SERVER_URL) pingServer(); } 
-    else { settingsView.classList.add('hidden'); mainView.classList.remove('hidden'); renderReturns(); }
+    if (f === 'settings') {
+        mainView.classList.add('hidden');
+        settingsView.classList.remove('hidden');
+        document.getElementById('setServerUrl').value = SERVER_URL;
+        updateAuthUiBoxes(false);
+        loadSettings();
+    } else {
+        settingsView.classList.add('hidden');
+        mainView.classList.remove('hidden');
+        renderReturns();
+    }
 }
 
 async function loadReturns() {
@@ -855,15 +906,27 @@ function escapeHtml(s) { return String(s || '').replace(/[&<>"']/g, m => ({'&':'
 (async function initApp() {
     applyLanguage();
 
+    // 1. Gespeicherte Server-URL sofort in das Input-Feld schreiben
+    const urlInput = document.getElementById('setServerUrl');
+    if (urlInput && SERVER_URL) {
+        urlInput.value = SERVER_URL;
+    }
+
+    // 2. Falls direkt über den Browser auf dem Server aufgerufen: eigene URL automatisch erkennen & dauerhaft speichern
     if (!SERVER_URL && !window.Capacitor && window.location.protocol.startsWith('http')) {
         try {
             const res = await fetch('/api/ping');
-            if (res.ok) { SERVER_URL = window.location.origin; document.getElementById('setServerUrl').value = SERVER_URL; }
+            if (res.ok) {
+                SERVER_URL = window.location.origin;
+                localStorage.setItem('retrack_server_url', SERVER_URL);
+                if (urlInput) urlInput.value = SERVER_URL;
+            }
         } catch (e) {}
     }
 
+    // 3. Wenn eine Server-URL da ist, Verbindung prüfen (ohne den Token zu löschen!)
     if (SERVER_URL) {
-        pingServer();
+        await verifyServerConnection(SERVER_URL);
     } else {
         await loadReturns();
         const s = await apiGetSettings();
