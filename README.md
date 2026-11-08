@@ -15,6 +15,7 @@ Featuring an integrated QR code scanner (camera or screenshot upload), intellige
 - **1-Click Text Chips:** Displays all detected text lines from the return label as clickable chips—no manual typing required.
 - **Receipt OCR & Shipment Tracking:** Photograph or upload your drop-off receipt. ReTrack automatically extracts the tracking number (e.g., `JJD...`, `0034...`, `1Z...`), generates direct tracking links (DHL, Hermes, DPD, GLS, UPS), and marks the return as *Completed*.
 - **Parcel Shop Mode (Batch-Swipe Lightbox):** Displays all pending return codes in high contrast on a white background. Swipe left/right through multiple packages, toggle the original screenshot at any time, and keep your screen awake automatically via the *Screen Wake Lock API*.
+- **Geräte-Profil (No Login-Stress):** Simple device profile assignment via `X-Device-User` header. Set your name once in the settings, and all returns are automatically associated without passwords or expiring sessions.
 - **Deadline Reminders (Webhooks):** Optional background check that sends push notifications via **ntfy**, **Gotify**, or **Discord** when pending returns remain open for too long.
 - **Auto-Cleanup (Storage Hygiene):** Optional automatic cleanup of image files or entire records for completed returns after a configurable retention period (30, 60, 90, 180, or 365 days).
 - **1-Click Backup & Restore:** Export and import the complete database including all images and receipts as a single JSON archive directly from the settings tab.
@@ -47,7 +48,7 @@ ReTrack/
 
 Don't have a home server? You can use ReTrack as a **100% local standalone Android app**. All data and images are stored directly on your device using IndexedDB.
 
-1. Go to the [**Releases**](https://github.com/grosserlacher/ReTrack/releases) page of this repository.
+1. Go to the [Releases](https://github.com/grosserlacher/ReTrack/releases) page of this repository.
 2. Download the latest `ReTrack-Light-Standalone.apk` to your Android smartphone and install it.
 3. Every push or tag (`v*`) to this repository automatically builds a fresh APK via **GitHub Actions**.
 
@@ -101,7 +102,7 @@ docker compose pull && docker compose up -d
 If you want to modify the source code or customize the frontend in `public/`:
 
 ```bash
-git clone [https://github.com/grosserlacher/ReTrack.git](https://github.com/grosserlacher/ReTrack.git)
+git clone https://github.com/grosserlacher/ReTrack.git
 cd ReTrack
 docker compose up -d --build
 ```
@@ -131,16 +132,19 @@ The web application is immediately available at:
 
 ## 🔄 Usage & Workflow
 
-1. **Capture a Return:**
+1. **Initial Setup (Settings Tab):**
+   - If using the Docker server, enter your server URL (e.g., `https://retrack.dolch.me`) and click **Connect**.
+   - Enter your name under **Device Profile** (e.g., `Alexander`) and click **Save**.
+2. **Capture a Return:**
    - **Direct Share (Android Web-Share-Target):** Take a screenshot of the return QR code in your shopping app (e.g., Amazon), tap *Share* in the Android screenshot preview, and select **ReTrack**.
    - **On Desktop:** Take a screenshot (`Win + Shift + S`) containing both the QR code and item title, open ReTrack, and press `Ctrl + V` (or select the file manually).
    - **Via Camera:** Use the built-in camera scanner to scan a physical or digital code.
-2. **Verify & Save:**
+3. **Verify & Save:**
    - ReTrack automatically isolates the QR code and uses OCR to fill in the platform and item description (or lets you pick from clickable text chips). Click **Save Return**.
-3. **At the Parcel Shop:**
+4. **At the Parcel Shop:**
    - Open the app (*Pending* tab) and tap **Parcel Shop Mode** (or *Maximize* on an individual item).
    - Swipe left/right through all open packages and let the clerk scan the codes directly from your screen. You can toggle the full original screenshot at any time.
-4. **Save Drop-Off Receipt & Track:**
+5. **Save Drop-Off Receipt & Track:**
    - Under *Drop-Off Receipt* on the return card, take a photo of your printed receipt and tap **Save Receipt (incl. Tracking OCR)**.
    - The tracking number is automatically extracted, the **Track Shipment** button is unlocked, and the return moves to the *Completed* tab.
 
@@ -156,7 +160,7 @@ Run ReTrack behind a reverse proxy with an SSL certificate (e.g., Nginx Proxy Ma
 
 ## 🛠️ Tech Stack
 
-- **Backend:** Node.js, Express.js, Multer (multipart file uploads), SQLite3, Zlib (fallback icon generator)
+- **Backend:** Node.js, Express.js, Multer (multipart file uploads), SQLite3
 - **Frontend & Mobile:** HTML5, Tailwind CSS (CDN), Vanilla JavaScript, IndexedDB (offline storage), Capacitor (Android APK)
 - **Libraries:**
   - `jsQR` (Precise QR code localization & canvas cropping)
