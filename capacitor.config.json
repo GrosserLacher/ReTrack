@@ -3,4 +3,9 @@
   "appName": "ReTrack",
   "webDir": "public",
   "bundledWebRuntime": false
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
 }
