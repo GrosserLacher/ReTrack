@@ -146,14 +146,17 @@
                     <h3 class="text-sm font-semibold text-emerald-400">Erster Start: Admin-Konto erstellen</h3>
                     <input type="text" id="setupUsername" placeholder="Benutzername" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
                     <input type="password" id="setupPassword" placeholder="Passwort" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
-                    <button onclick="setupAdmin()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2 rounded-xl text-sm transition">Admin-Konto anlegen</button>
+                    <button onclick="setupAdmin()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2 rounded-xl text-sm transition">Admin-Konto anlegen & Einloggen</button>
                 </div>
 
                 <div id="loginBox" class="hidden bg-slate-950 border border-slate-800/80 rounded-xl p-3.5 space-y-3">
-                    <h3 class="text-sm font-semibold text-blue-400">Am Server anmelden</h3>
+                    <h3 class="text-sm font-semibold text-blue-400">Konto Anmeldung / Registrierung</h3>
                     <input type="text" id="loginUsername" placeholder="Benutzername" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
                     <input type="password" id="loginPassword" placeholder="Passwort" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
-                    <button onclick="loginUser()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 rounded-xl text-sm transition">Einloggen</button>
+                    <div class="flex gap-2">
+                        <button onclick="loginUser()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 rounded-xl text-sm transition">Einloggen</button>
+                        <button onclick="registerUser()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition">Registrieren</button>
+                    </div>
                 </div>
 
                 <div id="loggedInBox" class="hidden bg-slate-950 border border-slate-800/80 rounded-xl p-3.5 flex justify-between items-center">
@@ -285,6 +288,6 @@
         </div>
     </div>
 
-    <script src="/app.js?v=15"></script>
+    <script src="/app.js?v=16"></script>
 </body>
 </html>

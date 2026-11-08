@@ -197,14 +197,54 @@ async function setupAdmin() {
         const res = await fetch(getApiUrl('/api/auth/setup'), {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p })
         });
+        const data = await res.json();
         if (res.ok) {
-            alert('Admin erstellt. Bitte jetzt einloggen.');
+            // Auto-Login Logik
+            AUTH_TOKEN = data.token; CURRENT_USER = data.username; CURRENT_ROLE = data.role;
+            localStorage.setItem('retrack_auth_token', AUTH_TOKEN);
+            localStorage.setItem('retrack_username', CURRENT_USER);
+            localStorage.setItem('retrack_role', CURRENT_ROLE);
+            
             document.getElementById('setupAdminBox').classList.add('hidden');
-            document.getElementById('loginBox').classList.remove('hidden');
+            document.getElementById('loggedInBox').classList.remove('hidden');
+            document.getElementById('currentUserSpan').textContent = CURRENT_USER;
+            if (CURRENT_ROLE === 'admin') document.getElementById('adminUsersBox').classList.remove('hidden');
+            
+            loadReturns();
+            checkMigration();
         } else {
-            alert('Fehler beim Erstellen.');
+            alert('Fehler beim Erstellen: ' + (data.error || 'Unbekannt'));
         }
     } catch (e) { alert(e.message); }
+}
+
+async function registerUser() {
+    const u = document.getElementById('loginUsername').value.trim();
+    const p = document.getElementById('loginPassword').value;
+    if (!u || !p) return alert('Bitte Nutzername und Passwort eingeben.');
+    try {
+        const res = await fetch(getApiUrl('/api/auth/register'), {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            AUTH_TOKEN = data.token; CURRENT_USER = data.username; CURRENT_ROLE = data.role;
+            localStorage.setItem('retrack_auth_token', AUTH_TOKEN);
+            localStorage.setItem('retrack_username', CURRENT_USER);
+            localStorage.setItem('retrack_role', CURRENT_ROLE);
+
+            document.getElementById('loginBox').classList.add('hidden');
+            document.getElementById('loggedInBox').classList.remove('hidden');
+            document.getElementById('currentUserSpan').textContent = CURRENT_USER;
+
+            if (CURRENT_ROLE === 'admin') document.getElementById('adminUsersBox').classList.remove('hidden');
+
+            loadReturns();
+            checkMigration();
+        } else {
+            alert('Fehler: ' + (data.error || 'Registrierung fehlgeschlagen.'));
+        }
+    } catch (e) { alert('Netzwerkfehler: ' + e.message); }
 }
 
 async function loginUser() {

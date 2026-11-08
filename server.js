@@ -83,7 +83,33 @@ app.post('/api/auth/setup', (req, res) => {
         const hash = hashPassword(password, salt);
         db.run(`INSERT INTO users (username, password_hash, salt, role) VALUES (?, ?, ?, 'admin')`, [username, hash, salt], function(err) {
             if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true });
+            const userId = this.lastID;
+            const token = crypto.randomBytes(32).toString('hex');
+            db.run(`INSERT INTO sessions (token, user_id) VALUES (?, ?)`, [token, userId], () => {
+                res.json({ success: true, token, username, role: 'admin' });
+            });
+        });
+    });
+});
+
+// NEUER ENDPUNKT FÜR DIREKTE REGISTRIERUNG
+app.post('/api/auth/register', (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Bitte alles ausfüllen' });
+    
+    db.get(`SELECT COUNT(*) as count FROM users`, (err, row) => {
+        if (row.count === 0) return res.status(403).json({ error: 'Admin setup required first' });
+        
+        const salt = crypto.randomBytes(16).toString('hex');
+        const hash = hashPassword(password, salt);
+        db.run(`INSERT INTO users (username, password_hash, salt, role) VALUES (?, ?, ?, 'user')`, [username, hash, salt], function(err) {
+            if (err) return res.status(400).json({ error: 'Benutzername existiert bereits' });
+            
+            const userId = this.lastID;
+            const token = crypto.randomBytes(32).toString('hex');
+            db.run(`INSERT INTO sessions (token, user_id) VALUES (?, ?)`, [token, userId], () => {
+                res.json({ success: true, token, username, role: 'user' });
+            });
         });
     });
 });
