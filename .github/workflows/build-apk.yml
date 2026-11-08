@@ -46,7 +46,12 @@ jobs:
             "appId": "de.grosserlacher.retrack",
             "appName": "ReTrack",
             "webDir": "public",
-            "bundledWebRuntime": false
+            "bundledWebRuntime": false,
+            "plugins": {
+              "CapacitorHttp": {
+                "enabled": true
+              }
+            }
           }
           CONFIG
 
@@ -58,6 +63,22 @@ jobs:
       - name: Inject Camera Permission into AndroidManifest.xml
         run: |
           sed -i 's/<application/<uses-permission android:name="android.permission.CAMERA" \/>\n    <application/' android/app/src/main/AndroidManifest.xml
+
+      - name: Trust User Certificates for Self-Signed SSL
+        run: |
+          mkdir -p android/app/src/main/res/xml
+          cat << 'EOF' > android/app/src/main/res/xml/network_security_config.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <network-security-config>
+              <base-config>
+                  <trust-anchors>
+                      <certificates src="system" />
+                      <certificates src="user" />
+                  </trust-anchors>
+              </base-config>
+          </network-security-config>
+          EOF
+          sed -i 's/<application/<application android:networkSecurityConfig="@xml\/network_security_config"/g' android/app/src/main/AndroidManifest.xml
 
       - name: Grant execute permission for Gradle wrapper
         run: chmod +x android/gradlew
