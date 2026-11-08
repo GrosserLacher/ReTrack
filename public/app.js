@@ -3,9 +3,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 }
 
 let SERVER_URL = localStorage.getItem('retrack_server_url') || '';
-let AUTH_TOKEN = localStorage.getItem('retrack_auth_token') || '';
-let CURRENT_USER = localStorage.getItem('retrack_username') || '';
-let CURRENT_ROLE = localStorage.getItem('retrack_role') || '';
+let DEVICE_USER = localStorage.getItem('retrack_device_user') || 'Standard';
 let IS_LOCAL_MODE = !Boolean(SERVER_URL);
 
 let currentLang = localStorage.getItem('retrack_lang') || 'de';
@@ -121,67 +119,36 @@ function getApiUrl(path) {
 }
 
 function getAuthHeaders() {
-    const headers = {};
-    if (AUTH_TOKEN) headers['Authorization'] = 'Bearer ' + AUTH_TOKEN;
+    const headers = { 'X-Device-User': DEVICE_USER };
     return headers;
 }
 
-function updateAuthUiBoxes(requireSetup = false) {
-    const setupBox = document.getElementById('setupAdminBox');
-    const loginBox = document.getElementById('loginBox');
-    const loggedInBox = document.getElementById('loggedInBox');
-    const adminBox = document.getElementById('adminUsersBox');
-
-    setupBox.classList.add('hidden');
-    loginBox.classList.add('hidden');
-    loggedInBox.classList.add('hidden');
-    adminBox.classList.add('hidden');
-
-    if (IS_LOCAL_MODE) return;
-
-    if (requireSetup) {
-        setupBox.classList.remove('hidden');
-    } else if (AUTH_TOKEN) {
-        loggedInBox.classList.remove('hidden');
-        document.getElementById('currentUserSpan').textContent = CURRENT_USER;
-        if (CURRENT_ROLE === 'admin') adminBox.classList.remove('hidden');
-    } else {
-        loginBox.classList.remove('hidden');
-    }
+function saveDeviceUser() {
+    const val = document.getElementById('setDeviceUser').value.trim();
+    if (!val) return alert('Bitte einen Namen eingeben.');
+    DEVICE_USER = val;
+    localStorage.setItem('retrack_device_user', DEVICE_USER);
+    alert('Geräte-Profil gespeichert: ' + DEVICE_USER);
+    loadReturns();
 }
 
-// Wird NUR aufgerufen, wenn der Nutzer aktiv auf den "Verbinden"-Button klickt
 async function pingServer() {
     const urlInput = document.getElementById('setServerUrl');
     const inputUrl = urlInput ? urlInput.value.trim() : '';
+    const statusEl = document.getElementById('serverStatusText');
 
     if (!inputUrl) {
-        SERVER_URL = ''; AUTH_TOKEN = ''; CURRENT_USER = ''; CURRENT_ROLE = '';
+        SERVER_URL = '';
         localStorage.removeItem('retrack_server_url');
-        localStorage.removeItem('retrack_auth_token');
-        localStorage.removeItem('retrack_username');
-        localStorage.removeItem('retrack_role');
         IS_LOCAL_MODE = true;
-        
-        const statusEl = document.getElementById('serverStatusText');
         if (statusEl) {
             statusEl.classList.remove('hidden');
             statusEl.textContent = 'Lokaler Offline-Modus aktiv.';
             statusEl.className = 'text-xs font-medium text-emerald-400 mt-1';
         }
-        updateAuthUiBoxes();
         loadReturns();
         return;
     }
-
-    await verifyServerConnection(inputUrl);
-}
-
-// Sichere Hintergrund-Prüfung ohne ungewolltes Löschen des Tokens
-async function verifyServerConnection(targetUrl) {
-    const statusEl = document.getElementById('serverStatusText');
-    const urlInput = document.getElementById('setServerUrl');
-    if (urlInput && targetUrl) urlInput.value = targetUrl;
 
     if (statusEl) {
         statusEl.classList.remove('hidden');
@@ -190,10 +157,9 @@ async function verifyServerConnection(targetUrl) {
     }
 
     try {
-        const cleanUrl = targetUrl.replace(/\/$/, '');
+        const cleanUrl = inputUrl.replace(/\/$/, '');
         const res = await fetch(cleanUrl + '/api/ping');
         if (!res.ok) throw new Error();
-        const data = await res.json();
         
         SERVER_URL = cleanUrl;
         localStorage.setItem('retrack_server_url', SERVER_URL);
@@ -203,180 +169,23 @@ async function verifyServerConnection(targetUrl) {
             statusEl.textContent = 'Server verbunden!';
             statusEl.className = 'text-xs font-medium text-emerald-400 mt-1';
         }
-
-        if (data.requireSetup) {
-            updateAuthUiBoxes(true);
-        } else if (AUTH_TOKEN) {
-            const test = await fetch(getApiUrl('/api/returns'), { headers: getAuthHeaders() });
-            if (test.ok) {
-                updateAuthUiBoxes(false);
-                checkMigration();
-            } else if (test.status === 401) {
-                // Nur ausloggen, wenn der Server den Token explizit als ungültig ablehnt (401)
-                clearSessionState();
-                updateAuthUiBoxes(false);
-            } else {
-                updateAuthUiBoxes(false);
-            }
-        } else {
-            updateAuthUiBoxes(false);
-        }
         await loadReturns();
     } catch (e) {
         if (statusEl) {
             statusEl.textContent = 'Fehler: Server nicht erreichbar oder falsche URL.';
             statusEl.className = 'text-xs font-medium text-red-400 mt-1';
         }
-        // Token bei kurzem Netzwerkfehler NICHT löschen!
-        updateAuthUiBoxes(false);
-        await loadReturns();
     }
-}
-
-function clearSessionState() {
-    AUTH_TOKEN = ''; CURRENT_USER = ''; CURRENT_ROLE = '';
-    localStorage.removeItem('retrack_auth_token');
-    localStorage.removeItem('retrack_username');
-    localStorage.removeItem('retrack_role');
-}
-
-function saveSessionState(data) {
-    AUTH_TOKEN = data.token;
-    CURRENT_USER = data.username;
-    CURRENT_ROLE = data.role;
-    localStorage.setItem('retrack_auth_token', AUTH_TOKEN);
-    localStorage.setItem('retrack_username', CURRENT_USER);
-    localStorage.setItem('retrack_role', CURRENT_ROLE);
-    if (SERVER_URL) localStorage.setItem('retrack_server_url', SERVER_URL);
-    IS_LOCAL_MODE = false;
-    updateAuthUiBoxes(false);
-}
-
-async function setupAdmin() {
-    const u = document.getElementById('setupUsername').value.trim();
-    const p = document.getElementById('setupPassword').value;
-    if (!u || !p) return alert('Bitte ausfüllen');
-    try {
-        const res = await fetch(getApiUrl('/api/auth/setup'), {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p })
-        });
-        const data = await res.json();
-        if (res.ok && data.token) {
-            saveSessionState(data);
-            await loadReturns();
-            checkMigration();
-        } else {
-            alert('Fehler beim Erstellen: ' + (data.error || 'Unbekannt'));
-        }
-    } catch (e) { alert(e.message); }
-}
-
-async function registerUser() {
-    const u = document.getElementById('loginUsername').value.trim();
-    const p = document.getElementById('loginPassword').value;
-    if (!u || !p) return alert('Bitte Nutzername und Passwort eingeben.');
-    try {
-        const res = await fetch(getApiUrl('/api/auth/register'), {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p })
-        });
-        const data = await res.json();
-        if (res.ok && data.token) {
-            saveSessionState(data);
-            await loadReturns();
-            checkMigration();
-        } else {
-            alert('Fehler: ' + (data.error || 'Registrierung fehlgeschlagen.'));
-        }
-    } catch (e) { alert('Netzwerkfehler: ' + e.message); }
-}
-
-async function loginUser() {
-    const u = document.getElementById('loginUsername').value.trim();
-    const p = document.getElementById('loginPassword').value;
-    if (!u || !p) return;
-    try {
-        const res = await fetch(getApiUrl('/api/auth/login'), {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p })
-        });
-        if (!res.ok) throw new Error('Falsche Zugangsdaten');
-        const data = await res.json();
-        saveSessionState(data);
-        await loadReturns();
-        checkMigration();
-    } catch (e) { alert(e.message); }
-}
-
-function logoutUser() {
-    if (AUTH_TOKEN) fetch(getApiUrl('/api/auth/logout'), { method: 'POST', headers: getAuthHeaders() }).catch(()=>{});
-    clearSessionState();
-    updateAuthUiBoxes(false);
-    loadReturns();
-}
-
-async function createNewUser() {
-    const u = document.getElementById('newUsername').value.trim();
-    const p = document.getElementById('newUserPassword').value;
-    if (!u || !p) return alert('Bitte Nutzername und Passwort eingeben.');
-    try {
-        const res = await fetch(getApiUrl('/api/auth/users'), {
-            method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ username: u, password: p })
-        });
-        const data = await res.json();
-        if (res.ok) {
-            alert(`Nutzer "${data.username}" wurde erfolgreich angelegt!`);
-            document.getElementById('newUsername').value = '';
-            document.getElementById('newUserPassword').value = '';
-        } else { alert('Fehler: ' + (data.error || 'Nutzer konnte nicht angelegt werden.')); }
-    } catch (e) { alert('Netzwerkfehler: ' + e.message); }
-}
-
-async function checkMigration() {
-    if (IS_LOCAL_MODE || !AUTH_TOKEN) return;
-    const db = await openLocalDb();
-    const tx = db.transaction('returns', 'readonly');
-    const req = tx.objectStore('returns').getAll();
-    req.onsuccess = async () => {
-        const localReturns = req.result || [];
-        if (localReturns.length > 0) {
-            if (confirm(`Es wurden ${localReturns.length} lokale Retouren gefunden. Möchtest du diese jetzt auf den Server migrieren?`)) {
-                for (const r of localReturns) {
-                    const fd = new FormData();
-                    fd.append('item_name', r.item_name); fd.append('platform', r.platform);
-                    fd.append('qr_data', r.qr_data || ''); fd.append('is_private', 'false');
-                    
-                    if (r.qr_image_path) { const blob = await (await fetch(r.qr_image_path)).blob(); fd.append('qr_image', blob, 'qr.png'); }
-                    if (r.original_image_path) { const blob = await (await fetch(r.original_image_path)).blob(); fd.append('original_image', blob, 'orig.png'); }
-                    
-                    const res = await fetch(getApiUrl('/api/returns'), { method: 'POST', headers: getAuthHeaders(), body: fd });
-                    if (res.ok && r.receipt_path) {
-                        const newId = (await res.json()).id;
-                        const rBlob = await (await fetch(r.receipt_path)).blob();
-                        const rFd = new FormData(); rFd.append('receipt', rBlob, 'receipt.png');
-                        await fetch(getApiUrl('/api/returns/' + newId + '/receipt'), { method: 'POST', headers: getAuthHeaders(), body: rFd });
-                    }
-                }
-                const txDel = db.transaction('returns', 'readwrite');
-                txDel.objectStore('returns').clear();
-                alert('Migration abgeschlossen!');
-                loadReturns();
-            }
-        }
-    };
 }
 
 async function apiGetReturns() {
-    if (!IS_LOCAL_MODE && AUTH_TOKEN) {
+    if (!IS_LOCAL_MODE) {
         try {
             const res = await fetch(getApiUrl('/api/returns'), { headers: getAuthHeaders() });
             if (res.ok) return await res.json();
-            if (res.status === 401) {
-                clearSessionState();
-                updateAuthUiBoxes(false);
-            }
         } catch (e) {}
         return [];
     }
-    if (!IS_LOCAL_MODE && !AUTH_TOKEN) return [];
     
     const db = await openLocalDb();
     return new Promise((resolve) => {
@@ -388,7 +197,7 @@ async function apiGetReturns() {
 }
 
 async function apiGetSettings() {
-    if (!IS_LOCAL_MODE && AUTH_TOKEN) {
+    if (!IS_LOCAL_MODE) {
         try {
             const res = await fetch(getApiUrl('/api/settings'), { headers: getAuthHeaders() });
             if (res.ok) return await res.json();
@@ -424,13 +233,13 @@ async function saveReturn() {
     
     if (!itemName || !platform) return alert(t('alertFillFields'));
 
-    if (!IS_LOCAL_MODE && AUTH_TOKEN) {
+    if (!IS_LOCAL_MODE) {
         const fd = new FormData();
         fd.append('item_name', itemName); fd.append('platform', platform); fd.append('qr_data', qrData); fd.append('is_private', isPrivate);
         if (selectedQrFile) fd.append('qr_image', selectedQrFile);
         if (originalUploadFile) fd.append('original_image', originalUploadFile);
         await fetch(getApiUrl('/api/returns'), { method: 'POST', headers: getAuthHeaders(), body: fd });
-    } else if (IS_LOCAL_MODE) {
+    } else {
         const qrDataUrl = await fileToDataUrl(selectedQrFile);
         const origDataUrl = originalUploadFile ? await fileToDataUrl(originalUploadFile) : qrDataUrl;
         const nowStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -444,9 +253,6 @@ async function saveReturn() {
             });
             tx.oncomplete = () => resolve();
         });
-    } else {
-        setFilter('settings');
-        return alert("Bitte melde dich zuerst in den Einstellungen am Server an.");
     }
     
     resetForm(); loadReturns();
@@ -454,7 +260,7 @@ async function saveReturn() {
 
 async function togglePrivacy(id, currentPrivacy) {
     const newPrivacy = !currentPrivacy;
-    if (!IS_LOCAL_MODE && AUTH_TOKEN) {
+    if (!IS_LOCAL_MODE) {
         await fetch(getApiUrl(`/api/returns/${id}/privacy`), {
             method: 'PUT', headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
             body: JSON.stringify({ is_private: newPrivacy })
@@ -670,7 +476,7 @@ function setFilter(f) {
         mainView.classList.add('hidden');
         settingsView.classList.remove('hidden');
         document.getElementById('setServerUrl').value = SERVER_URL;
-        updateAuthUiBoxes(false);
+        document.getElementById('setDeviceUser').value = DEVICE_USER;
         loadSettings();
     } else {
         settingsView.classList.add('hidden');
@@ -737,9 +543,9 @@ function renderReturns() {
 }
 
 async function apiUpdateStatus(id, status) {
-    if (!IS_LOCAL_MODE && AUTH_TOKEN) {
+    if (!IS_LOCAL_MODE) {
         await fetch(getApiUrl(`/api/returns/${id}/status`), { method: 'PUT', headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
-    } else if (IS_LOCAL_MODE) {
+    } else {
         const nowStr = status === 'completed' ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null; const db = await openLocalDb();
         await new Promise((resolve) => { const tx = db.transaction('returns', 'readwrite'); const store = tx.objectStore('returns'); const g = store.get(Number(id));
             g.onsuccess = () => { if (g.result) { g.result.status = status; g.result.completed_at = nowStr; store.put(g.result); } resolve(); };
@@ -749,8 +555,8 @@ async function apiUpdateStatus(id, status) {
 async function toggleStatus(id, status) { await apiUpdateStatus(id, status); loadReturns(); }
 
 async function apiDeleteReturn(id) {
-    if (!IS_LOCAL_MODE && AUTH_TOKEN) { await fetch(getApiUrl(`/api/returns/${id}`), { method: 'DELETE', headers: getAuthHeaders() }); } 
-    else if (IS_LOCAL_MODE) { const db = await openLocalDb(); await new Promise((resolve) => { const tx = db.transaction('returns', 'readwrite'); tx.objectStore('returns').delete(Number(id)); tx.oncomplete = () => resolve(); }); }
+    if (!IS_LOCAL_MODE) { await fetch(getApiUrl(`/api/returns/${id}`), { method: 'DELETE', headers: getAuthHeaders() }); } 
+    else { const db = await openLocalDb(); await new Promise((resolve) => { const tx = db.transaction('returns', 'readwrite'); tx.objectStore('returns').delete(Number(id)); tx.oncomplete = () => resolve(); }); }
 }
 async function deleteReturn(id) { if (!confirm(t('confirmDelete'))) return; await apiDeleteReturn(id); loadReturns(); }
 
@@ -760,10 +566,10 @@ async function uploadReceiptWithOcr(id) {
     if (!input.files[0]) return; btn.disabled = true; btn.textContent = t('checkingReceiptOcr');
     let dt = ''; try { const res = await Tesseract.recognize(input.files[0], 'deu+eng'); dt = extractTrackingNumberFromText(res.data.text || ''); } catch (e) {}
     
-    if (!IS_LOCAL_MODE && AUTH_TOKEN) {
+    if (!IS_LOCAL_MODE) {
         const fd = new FormData(); fd.append('receipt', input.files[0]); if (dt) fd.append('qr_data', dt);
         await fetch(getApiUrl(`/api/returns/${id}/receipt`), { method: 'POST', headers: getAuthHeaders(), body: fd });
-    } else if (IS_LOCAL_MODE) {
+    } else {
         const recDataUrl = await fileToDataUrl(input.files[0]); const nowStr = new Date().toISOString().slice(0, 19).replace('T', ' '); const db = await openLocalDb();
         await new Promise((resolve) => {
             const tx = db.transaction('returns', 'readwrite'); const store = tx.objectStore('returns'); const g = store.get(Number(id));
@@ -818,8 +624,8 @@ async function openLightboxWithWakeLock() { document.getElementById('lightboxMod
 function closeModal() { document.getElementById('lightboxModal').classList.add('hidden'); if (wakeLockObj) { wakeLockObj.release().catch(() => {}); wakeLockObj = null; } }
 
 async function apiSaveSettings(payload) {
-    if (!IS_LOCAL_MODE && AUTH_TOKEN) { await fetch(getApiUrl('/api/settings'), { method: 'PUT', headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); } 
-    else if (IS_LOCAL_MODE) { const db = await openLocalDb(); await new Promise((resolve) => { const tx = db.transaction('settings', 'readwrite'); const store = tx.objectStore('settings'); Object.entries(payload).forEach(([k, v]) => store.put({ key: k, value: String(v) })); tx.oncomplete = () => resolve(); }); }
+    if (!IS_LOCAL_MODE) { await fetch(getApiUrl('/api/settings'), { method: 'PUT', headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); } 
+    else { const db = await openLocalDb(); await new Promise((resolve) => { const tx = db.transaction('settings', 'readwrite'); const store = tx.objectStore('settings'); Object.entries(payload).forEach(([k, v]) => store.put({ key: k, value: String(v) })); tx.oncomplete = () => resolve(); }); }
 }
 
 async function loadSettings() {
@@ -836,12 +642,12 @@ async function saveSettings() {
 }
 
 async function apiRunCleanup(days, mode, dryRun) {
-    if (!IS_LOCAL_MODE && AUTH_TOKEN) {
+    if (!IS_LOCAL_MODE) {
         const endpoint = dryRun ? '/api/cleanup/preview' : '/api/cleanup/run';
         const res = await fetch(getApiUrl(endpoint), { method: 'POST', headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ days, mode }) });
         if (res.ok) return await res.json();
         return { count: 0 };
-    } else if (IS_LOCAL_MODE) {
+    } else {
         const cutoffMs = Date.now() - (parseInt(days, 10) || 90) * 86400000; const all = await apiGetReturns();
         const expired = all.filter(r => { if (r.status !== 'completed') return false; const dt = Date.parse((r.completed_at || r.created_at || '').replace(' ', 'T')); return !isNaN(dt) && dt <= cutoffMs; });
         if (dryRun || expired.length === 0) return { count: expired.length };
@@ -852,7 +658,6 @@ async function apiRunCleanup(days, mode, dryRun) {
             tx.oncomplete = () => resolve({ count: expired.length });
         });
     }
-    return { count: 0 };
 }
 
 async function runManualCleanup() {
@@ -870,7 +675,7 @@ async function sendTestWebhook() {
 
 document.addEventListener('click', async (e) => {
     const link = e.target.closest('a[href="/api/backup/export"]');
-    if (!link || (!IS_LOCAL_MODE && !AUTH_TOKEN)) return;
+    if (!link || IS_LOCAL_MODE) return;
     e.preventDefault();
     const settings = await apiGetSettings(); const returns = await apiGetReturns();
     const payload = { app: 'ReTrack', version: 3, exported_at: new Date().toISOString(), settings, returns };
@@ -885,11 +690,11 @@ function restoreBackupFile(event) {
     reader.onload = async (e) => {
         try {
             const json = JSON.parse(e.target.result);
-            if (!IS_LOCAL_MODE && AUTH_TOKEN) {
+            if (!IS_LOCAL_MODE) {
                 const res = await fetch(getApiUrl('/api/backup/restore'), { method: 'POST', headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(json) });
                 const out = await res.json(); if (res.ok) { alert(t('alertRestoreSuccess', { count: out.count })); loadReturns(); loadSettings(); } else { alert(out.error || t('alertInvalidBackup')); }
                 return;
-            } else if (IS_LOCAL_MODE) {
+            } else {
                 if (json.settings) await apiSaveSettings(json.settings);
                 const db = await openLocalDb();
                 const tx = db.transaction('returns', 'readwrite'); const store = tx.objectStore('returns'); store.clear();
@@ -906,13 +711,11 @@ function escapeHtml(s) { return String(s || '').replace(/[&<>"']/g, m => ({'&':'
 (async function initApp() {
     applyLanguage();
 
-    // 1. Gespeicherte Server-URL sofort in das Input-Feld schreiben
     const urlInput = document.getElementById('setServerUrl');
-    if (urlInput && SERVER_URL) {
-        urlInput.value = SERVER_URL;
-    }
+    const userInput = document.getElementById('setDeviceUser');
+    if (urlInput && SERVER_URL) urlInput.value = SERVER_URL;
+    if (userInput && DEVICE_USER) userInput.value = DEVICE_USER;
 
-    // 2. Falls direkt über den Browser auf dem Server aufgerufen: eigene URL automatisch erkennen & dauerhaft speichern
     if (!SERVER_URL && !window.Capacitor && window.location.protocol.startsWith('http')) {
         try {
             const res = await fetch('/api/ping');
@@ -924,11 +727,8 @@ function escapeHtml(s) { return String(s || '').replace(/[&<>"']/g, m => ({'&':'
         } catch (e) {}
     }
 
-    // 3. Wenn eine Server-URL da ist, Verbindung prüfen (ohne den Token zu löschen!)
+    await loadReturns();
     if (SERVER_URL) {
-        await verifyServerConnection(SERVER_URL);
-    } else {
-        await loadReturns();
         const s = await apiGetSettings();
         if (s.cleanup_enabled === 'true') await apiRunCleanup(s.cleanup_days, s.cleanup_mode, false);
     }
