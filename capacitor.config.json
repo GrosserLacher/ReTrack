@@ -1,0 +1,6 @@
+{
+  "appId": "de.grosserlacher.retrack",
+  "appName": "ReTrack",
+  "webDir": "public",
+  "bundledWebRuntime": false
+}

@@ -1,0 +1,483 @@
+<!DOCTYPE html> <html lang="de" class="dark"> <head> <meta 
+    charset="UTF-8"> <meta name="viewport" 
+    content="width=device-width, initial-scale=1.0, 
+    viewport-fit=cover"> <title>ReTrack</title> <link 
+    rel="manifest" href="/manifest.json"> <link rel="icon" 
+    type="image/png" href="/icon-192.png"> <link 
+    rel="apple-touch-icon" href="/icon-192.png"> <meta 
+    name="theme-color" content="#0f172a"> <script 
+    src="https://cdn.tailwindcss.com"></script> <script 
+    src="https://unpkg.com/html5-qrcode"></script> <script 
+    src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script> 
+    <script 
+    src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script> 
+    <script 
+    src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script> 
+    <style>
+        body { font-family: system-ui, -apple-system, 
+        BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    </style> </head> <body class="bg-[#0f172a] text-slate-200 
+min-h-screen">
+    <!-- Fixierte Top-Leiste --> <header class="sticky top-0 
+    z-20 bg-slate-900 border-b border-slate-800">
+        <div class="max-w-4xl mx-auto px-4 py-3 flex 
+        items-center justify-between">
+            <div class="flex items-center gap-3"> <img 
+                src="/icon-192.png" alt="Logo" class="w-9 h-9 
+                rounded-xl border border-slate-800 
+                object-cover"> <div>
+                    <h1 class="font-bold text-base text-white 
+                    leading-tight">ReTrack</h1> <p 
+                    class="text-xs text-slate-400">Retouren 
+                    &amp; Belege</p>
+                </div> </div> <div class="flex items-center 
+            gap-2">
+                <button id="shopModeTopBtn" 
+                onclick="openBatchModal(0)" class="hidden 
+                bg-blue-600 hover:bg-blue-500 text-white 
+                font-semibold px-3.5 py-2 rounded-xl text-xs 
+                transition shadow-md">
+                    Paketshop-Modus </button> <button 
+                id="installBtn" onclick="installPWA()" 
+                class="hidden bg-slate-800 hover:bg-slate-700 
+                text-slate-200 font-medium px-3.5 py-2 
+                rounded-xl text-xs transition">
+                    App installieren </button> </div> </div> 
+    </header> <!-- Zentrierter Main-Container --> <main 
+    class="max-w-4xl mx-auto px-4 py-6 pb-28 space-y-6">
+        <!-- ANSICHT 1: HAUPTBEREICH (Offen / Abgeschlossen / 
+        Alle) --> <div id="mainView" class="space-y-6">
+            <!-- Karte: Neue Retoure erfassen --> <section 
+            class="bg-slate-900 border border-slate-800 
+            rounded-2xl p-4 sm:p-6 shadow-lg">
+                <div class="flex items-center justify-between 
+                mb-4">
+                    <h2 class="text-base font-semibold 
+                    text-white">Neue Retoure erfassen</h2> 
+                    <span class="bg-blue-950 text-blue-300 
+                    border border-blue-800/60 rounded-md px-2 
+                    py-0.5 text-xs">
+                        QR, 1D-Barcode &amp; OCR </span> 
+                </div> <div class="grid grid-cols-1 
+                sm:grid-cols-2 gap-3.5">
+                    <label for="qrInputFile" 
+                    class="cursor-pointer bg-slate-950 border 
+                    border-slate-800/80 
+                    hover:border-blue-500/60 rounded-xl p-3.5 
+                    flex flex-col justify-center transition">
+                        <div class="font-medium text-sm 
+                        text-white">Screenshot / Etikett 
+                        wählen</div> <div class="text-xs 
+                        text-slate-400 mt-0.5">Per Strg+V 
+                        einfügen oder aus App teilen</div> 
+                        <input type="file" id="qrInputFile" 
+                        accept="image/*" class="hidden">
+                    </label> <button type="button" 
+                    onclick="toggleCamera()" 
+                    class="bg-slate-950 border 
+                    border-slate-800/80 
+                    hover:border-blue-500/60 rounded-xl p-3.5 
+                    flex flex-col justify-center text-left 
+                    transition">
+                        <div class="font-medium text-sm 
+                        text-white">Kamera-Scanner 
+                        starten</div> <div class="text-xs 
+                        text-slate-400 mt-0.5">QR-Code oder 
+                        Strichcode abfilmen</div>
+                    </button> </div> <!-- Kamera-Vorschau --> 
+                <div id="cameraContainer" class="hidden mt-4 
+                bg-slate-950 border border-slate-800/80 
+                rounded-xl p-3.5">
+                    <div id="reader" class="w-full 
+                    overflow-hidden rounded-lg"></div> 
+                    <button type="button" 
+                    onclick="stopCamera()" class="mt-3 w-full 
+                    bg-slate-800 hover:bg-slate-700 
+                    text-slate-200 font-medium px-4 py-2 
+                    rounded-xl text-sm transition">
+                        Kamera schließen </button> </div> 
+                <div id="fileReaderHidden" class="w-1 h-1 
+                overflow-hidden opacity-0 pointer-events-none 
+                fixed"></div> <!-- Eingabeformular --> <div 
+                id="returnForm" class="hidden mt-5 pt-5 
+                border-t border-slate-800 space-y-4">
+                    <div class="grid grid-cols-1 
+                    sm:grid-cols-3 gap-3.5">
+                        <!-- Dedizierte Code-Box --> <div 
+                        class="bg-slate-950 border 
+                        border-slate-800/80 rounded-xl p-3.5 
+                        flex flex-col items-center 
+                        justify-center text-center">
+                            <label class="block text-xs 
+                            font-medium text-slate-400 
+                            uppercase tracking-wider mb-1.5">
+                                Isolierter Code </label> <div 
+                            id="extractedQrBox" 
+                            onclick="openFormQrPreview()" 
+                            class="w-28 h-28 bg-white p-2 
+                            rounded-xl flex items-center 
+                            justify-center cursor-pointer 
+                            border border-slate-700">
+                                <img id="extractedQrImg" 
+                                src="" alt="Code" 
+                                class="hidden w-full h-full 
+                                object-contain"> <div 
+                                id="extractedQrFallback" 
+                                class="hidden"></div> <span 
+                                id="extractedQrPlaceholder" 
+                                class="text-[11px] 
+                                text-slate-500">Wird 
+                                gesucht...</span>
+                            </div> <span class="text-[11px] 
+                            text-slate-400 mt-1.5">Antippen 
+                            zum Maximieren</span>
+                        </div> <!-- Status & Sendungsdaten 
+                        --> <div class="sm:col-span-2 
+                        bg-slate-950 border 
+                        border-slate-800/80 rounded-xl p-3.5 
+                        flex flex-col justify-between 
+                        space-y-3">
+                            <div class="flex flex-wrap 
+                            items-center justify-between 
+                            gap-2">
+                                <div class="flex flex-wrap 
+                                gap-2">
+                                    <span 
+                                    id="scanStatusBadge" 
+                                    class="bg-blue-950 
+                                    text-blue-300 border 
+                                    border-blue-800/60 
+                                    rounded-md px-2 py-0.5 
+                                    text-xs">
+                                        Bild geladen </span> 
+                                    <span id="ocrStatusBadge" 
+                                    class="bg-amber-950 
+                                    text-amber-300 border 
+                                    border-amber-800/60 
+                                    rounded-md px-2 py-0.5 
+                                    text-xs">
+                                        OCR analysiert... 
+                                    </span>
+                                </div> <button type="button" 
+                                id="previewFullImgBtn" 
+                                onclick="openFullScreenshotPreview()" 
+                                class="hidden bg-slate-800 
+                                hover:bg-slate-700 
+                                text-slate-200 font-medium 
+                                px-2.5 py-1 rounded-lg 
+                                text-xs transition">
+                                    Original-Screenshot 
+                                </button>
+                            </div> <div> <label class="block 
+                                text-xs font-medium 
+                                text-slate-400 uppercase 
+                                tracking-wider mb-1.5">
+                                    Sendungsnummer / 
+                                    Code-Inhalt
+                                </label> <input type="text" 
+                                id="qrData" placeholder="Wird 
+                                aus Code oder Beleg 
+                                ausgelesen..." class="w-full 
+                                bg-slate-950 border 
+                                border-slate-800 rounded-xl 
+                                px-3.5 py-2.5 text-sm 
+                                text-white focus:outline-none 
+                                focus:border-blue-500">
+                            </div> </div> </div> <div> <label 
+                        class="block text-xs font-medium 
+                        text-slate-400 uppercase 
+                        tracking-wider mb-1.5">
+                            Artikelbeschreibung * </label> 
+                        <input type="text" id="itemName" 
+                        placeholder="Wird per OCR gesucht 
+                        oder manuell eingeben..." 
+                        class="w-full bg-slate-950 border 
+                        border-slate-800 rounded-xl px-3.5 
+                        py-2.5 text-sm text-white 
+                        focus:outline-none 
+                        focus:border-blue-500">
+                        
+                        <div id="ocrSuggestionsBox" 
+                        class="hidden mt-3 bg-slate-950 
+                        border border-slate-800/80 rounded-xl 
+                        p-3.5">
+                            <label class="block text-xs 
+                            font-medium text-slate-400 
+                            uppercase tracking-wider mb-1.5">
+                                Erkannte Textzeilen (Antippen 
+                                zum Übernehmen)
+                            </label> <div id="ocrChips" 
+                            class="flex flex-wrap gap-1.5 
+                            max-h-28 overflow-y-auto"></div>
+                        </div> </div> <div> <label 
+                        class="block text-xs font-medium 
+                        text-slate-400 uppercase 
+                        tracking-wider mb-1.5">
+                            Plattform / Versanddienstleister 
+                            *
+                        </label> <div class="flex flex-wrap 
+                        gap-1.5 mb-2.5">
+                            <button type="button" 
+                            onclick="setPlatform('Amazon')" 
+                            class="bg-slate-800 
+                            hover:bg-slate-700 text-slate-200 
+                            font-medium px-3 py-1.5 
+                            rounded-xl text-xs 
+                            transition">Amazon</button> 
+                            <button type="button" 
+                            onclick="setPlatform('DHL 
+                            Retoure')" class="bg-slate-800 
+                            hover:bg-slate-700 text-slate-200 
+                            font-medium px-3 py-1.5 
+                            rounded-xl text-xs 
+                            transition">DHL</button> <button 
+                            type="button" 
+                            onclick="setPlatform('Hermes')" 
+                            class="bg-slate-800 
+                            hover:bg-slate-700 text-slate-200 
+                            font-medium px-3 py-1.5 
+                            rounded-xl text-xs 
+                            transition">Hermes</button> 
+                            <button type="button" 
+                            onclick="setPlatform('DPD')" 
+                            class="bg-slate-800 
+                            hover:bg-slate-700 text-slate-200 
+                            font-medium px-3 py-1.5 
+                            rounded-xl text-xs 
+                            transition">DPD</button> <button 
+                            type="button" 
+                            onclick="setPlatform('Zalando')" 
+                            class="bg-slate-800 
+                            hover:bg-slate-700 text-slate-200 
+                            font-medium px-3 py-1.5 
+                            rounded-xl text-xs 
+                            transition">Zalando</button> 
+                            <button type="button" 
+                            onclick="setPlatform('Otto')" 
+                            class="bg-slate-800 
+                            hover:bg-slate-700 text-slate-200 
+                            font-medium px-3 py-1.5 
+                            rounded-xl text-xs 
+                            transition">Otto</button> <button 
+                            type="button" 
+                            onclick="setPlatform('eBay')" 
+                            class="bg-slate-800 
+                            hover:bg-slate-700 text-slate-200 
+                            font-medium px-3 py-1.5 
+                            rounded-xl text-xs 
+                            transition">eBay</button>
+                        </div> <input type="text" 
+                        id="platform" placeholder="Wird 
+                        automatisch erkannt oder manuell 
+                        eingeben..." class="w-full 
+                        bg-slate-950 border border-slate-800 
+                        rounded-xl px-3.5 py-2.5 text-sm 
+                        text-white focus:outline-none 
+                        focus:border-blue-500">
+                    </div> <div class="flex flex-wrap 
+                    items-center gap-2.5 pt-2">
+                        <button type="button" 
+                        onclick="saveReturn()" class="flex-1 
+                        bg-blue-600 hover:bg-blue-500 
+                        text-white font-semibold px-4 py-2.5 
+                        rounded-xl text-sm transition 
+                        shadow-md">
+                            Retoure speichern </button> 
+                        <button type="button" 
+                        onclick="resetForm()" 
+                        class="bg-slate-800 
+                        hover:bg-slate-700 text-slate-200 
+                        font-medium px-4 py-2 rounded-xl 
+                        text-sm transition">
+                            Abbrechen </button> </div> </div> 
+            </section> <!-- Karte: Gespeicherte Retouren --> 
+            <section class="bg-slate-900 border 
+            border-slate-800 rounded-2xl p-4 sm:p-6 
+            shadow-lg">
+                <div class="flex flex-wrap items-center 
+                justify-between gap-2 mb-4">
+                    <div class="flex items-center gap-2.5"> 
+                        <h2 class="text-base font-semibold 
+                        text-white">Gespeicherte 
+                        Retouren</h2> <span id="counterText" 
+                        class="bg-slate-950 text-slate-300 
+                        border border-slate-800 rounded-md 
+                        px-2 py-0.5 text-xs">
+                            0 Einträge </span> </div> 
+                    <button id="shopModeCardBtn" 
+                    onclick="openBatchModal(0)" class="hidden 
+                    bg-blue-600 hover:bg-blue-500 text-white 
+                    font-semibold px-3.5 py-1.5 rounded-xl 
+                    text-xs transition shadow-md">
+                        Alle offenen Codes vorzeigen 
+                    </button>
+                </div> <div id="returnsList" 
+                class="space-y-3.5"></div>
+            </section> </div> <!-- ANSICHT 2: EINSTELLUNGEN 
+        --> <div id="settingsView" class="hidden space-y-6">
+            <!-- Karte 1: Speicher-Hygiene (Auto-Cleanup) --> 
+            <section class="bg-slate-900 border 
+            border-slate-800 rounded-2xl p-4 sm:p-6 shadow-lg 
+            space-y-4">
+                <div class="flex items-center 
+                justify-between">
+                    <div> <h2 class="text-base font-semibold 
+                        text-white">Speicher-Hygiene 
+                        (Auto-Cleanup)</h2> <p class="text-xs 
+                        text-slate-400 mt-0.5">Bereinigt 
+                        alte, bereits abgeschlossene Retouren 
+                        nach Ablauf der 
+                        Aufbewahrungsfrist</p>
+                    </div> <span id="cleanupStatusBadge" 
+                    class="bg-slate-950 text-slate-400 border 
+                    border-slate-800 rounded-md px-2 py-0.5 
+                    text-xs">
+                        Inaktiv </span> </div> <div 
+                class="bg-slate-950 border 
+                border-slate-800/80 rounded-xl p-3.5 flex 
+                items-center justify-between gap-4">
+                    <div> <div class="text-sm font-medium 
+                        text-white">Automatische Bereinigung 
+                        aktivieren</div> <div class="text-xs 
+                        text-slate-400">Prüft im Hintergrund 
+                        abgeschlossene Retouren</div>
+                    </div> <input type="checkbox" 
+                    id="setCleanupEnabled" class="w-5 h-5 
+                    accent-blue-600 rounded cursor-pointer">
+                </div> <div class="grid grid-cols-1 
+                sm:grid-cols-2 gap-3.5">
+                    <div> <label class="block text-xs 
+                        font-medium text-slate-400 uppercase 
+                        tracking-wider mb-1.5">
+                            Aufbewahrungsdauer nach Abschluss 
+                        </label> <select id="setCleanupDays" 
+                        class="w-full bg-slate-950 border 
+                        border-slate-800 rounded-xl px-3.5 
+                        py-2.5 text-sm text-white 
+                        focus:outline-none 
+                        focus:border-blue-500">
+                            <option value="30">30 
+                            Tage</option> <option 
+                            value="60">60 Tage</option> 
+                            <option value="90">90 Tage 
+                            (Empfohlen)</option> <option 
+                            value="180">180 Tage</option> 
+                            <option value="365">365 
+                            Tage</option>
+                        </select> </div> <div> <label 
+                        class="block text-xs font-medium 
+                        text-slate-400 uppercase 
+                        tracking-wider mb-1.5">
+                            Bereinigungs-Modus </label> 
+                        <select id="setCleanupMode" 
+                        class="w-full bg-slate-950 border 
+                        border-slate-800 rounded-xl px-3.5 
+                        py-2.5 text-sm text-white 
+                        focus:outline-none 
+                        focus:border-blue-500">
+                            <option value="files_only">Nur 
+                            Bilddateien löschen (Eintrag 
+                            behalten)</option> <option 
+                            value="delete_all">Kompletten 
+                            Datensatz inkl. Bildern 
+                            löschen</option>
+                        </select> </div> </div> <div 
+                class="flex flex-wrap items-center 
+                justify-between gap-2 pt-2">
+                    <button type="button" 
+                    onclick="runManualCleanup()" 
+                    class="bg-slate-800 hover:bg-slate-700 
+                    text-slate-200 font-medium px-4 py-2 
+                    rounded-xl text-sm transition">
+                        Jetzt manuell bereinigen </button> 
+                    <button type="button" 
+                    onclick="saveSettings()" 
+                    class="bg-blue-600 hover:bg-blue-500 
+                    text-white font-semibold px-4 py-2.5 
+                    rounded-xl text-sm transition shadow-md">
+                        Einstellungen speichern </button> 
+                </div>
+            </section> <!-- Karte 2: Fristen-Erinnerung & 
+            Webhooks --> <section class="bg-slate-900 border 
+            border-slate-800 rounded-2xl p-4 sm:p-6 shadow-lg 
+            space-y-4">
+                <div class="flex items-center 
+                justify-between">
+                    <div> <h2 class="text-base font-semibold 
+                        text-white">Fristen-Erinnerung &amp; 
+                        Webhooks</h2> <p class="text-xs 
+                        text-slate-400 mt-0.5">Sendet eine 
+                        Push-Nachricht (ntfy, Gotify oder 
+                        Discord), wenn offene Retouren zu 
+                        lange liegen bleiben</p>
+                    </div> </div> <div class="bg-slate-950 
+                border border-slate-800/80 rounded-xl p-3.5 
+                flex items-center justify-between gap-4">
+                    <div> <div class="text-sm font-medium 
+                        text-white">Push-Erinnerung für 
+                        offene Retouren aktivieren</div> <div 
+                        class="text-xs text-slate-400">Einmal 
+                        täglich bei überschrittener 
+                        Liegedauer</div>
+                    </div> <input type="checkbox" 
+                    id="setWebhookEnabled" class="w-5 h-5 
+                    accent-blue-600 rounded cursor-pointer">
+                </div> <div class="grid grid-cols-1 
+                sm:grid-cols-3 gap-3.5">
+                    <div class="sm:col-span-2"> <label 
+                        class="block text-xs font-medium 
+                        text-slate-400 uppercase 
+                        tracking-wider mb-1.5">
+                            Webhook-URL / ntfy-Topic-URL 
+                        </label> <input type="text" 
+                        id="setWebhookUrl" 
+                        placeholder="https://ntfy.sh/mein-retrack-topic" 
+                        class="w-full bg-slate-950 border 
+                        border-slate-800 rounded-xl px-3.5 
+                        py-2.5 text-sm text-white 
+                        focus:outline-none 
+                        focus:border-blue-500">
+                    </div> <div> <label class="block text-xs 
+                        font-medium text-slate-400 uppercase 
+                        tracking-wider mb-1.5">
+                            Warnung nach (Tagen) </label> 
+                        <input type="number" 
+                        id="setWebhookDays" min="1" max="60" 
+                        value="10" class="w-full bg-slate-950 
+                        border border-slate-800 rounded-xl 
+                        px-3.5 py-2.5 text-sm text-white 
+                        focus:outline-none 
+                        focus:border-blue-500">
+                    </div> </div> <div class="flex flex-wrap 
+                items-center justify-between gap-2 pt-2">
+                    <button type="button" 
+                    onclick="sendTestWebhook()" 
+                    class="bg-slate-800 hover:bg-slate-700 
+                    text-slate-200 font-medium px-4 py-2 
+                    rounded-xl text-sm transition">
+                        Test-Benachrichtigung senden 
+                    </button> <button type="button" 
+                    onclick="saveSettings()" 
+                    class="bg-blue-600 hover:bg-blue-500 
+                    text-white font-semibold px-4 py-2.5 
+                    rounded-xl text-sm transition shadow-md">
+                        Einstellungen speichern </button> 
+                </div>
+            </section> <!-- Karte 3: Datensicherung (Backup & 
+            Restore) --> <section class="bg-slate-900 border 
+            border-slate-800 rounded-2xl p-4 sm:p-6 shadow-lg 
+            space-y-4">
+                <div> <h2 class="text-base font-semibold 
+                    text-white">Datensicherung (Backup &amp; 
+                    Restore)</h2> <p class="text-xs 
+                    text-slate-400 mt-0.5">Exportiert oder 
+                    importiert die komplette SQLite-Datenbank 
+                    inklusive aller hochgeladenen Bilder und 
+                    Belege</p>
+                </div> <div class="grid grid-cols-1 
+                sm:grid-cols-2 gap-3.5">
+                    <div class="bg-slate-950 border 
+                    border-slate-800/80 rounded-xl p-3.5 flex 
+                    flex-col justify-between space-y-3">
+                        <div>
+                

@@ -1,0 +1,11 @@
+version: '3.8'
+services:
+  return-tracker:
+    build: .
+    ports:
+      - "3456:3000"
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+      - ./public:/app/public
+    restart: unless-stopped

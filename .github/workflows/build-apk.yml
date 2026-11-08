@@ -1,0 +1,86 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    tags: [ "v*" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android-apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Java JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Create isolated Frontend package.json & install Capacitor 6
+        run: |
+          rm -rf node_modules package-lock.json android
+          cat << 'PKG' > package.json
+          {
+            "name": "retrack-app",
+            "version": "1.2.0",
+            "private": true
+          }
+          PKG
+          npm install @capacitor/core@6.2.0 @capacitor/cli@6.2.0 @capacitor/android@6.2.0
+
+      - name: Create capacitor.config.json
+        run: |
+          cat << 'CONFIG' > capacitor.config.json
+          {
+            "appId": "de.grosserlacher.retrack",
+            "appName": "ReTrack",
+            "webDir": "public",
+            "bundledWebRuntime": false
+          }
+          CONFIG
+
+      - name: Initialize Capacitor Android (Non-interactive)
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Inject Camera Permission into AndroidManifest.xml
+        run: |
+          sed -i 's/<application/<uses-permission android:name="android.permission.CAMERA" \/>\n    <application/' android/app/src/main/AndroidManifest.xml
+
+      - name: Grant execute permission for Gradle wrapper
+        run: chmod +x android/gradlew
+
+      - name: Build APK with Gradle
+        working-directory: ./android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk ReTrack-Light-Standalone.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReTrack-Light-Standalone-APK
+          path: ReTrack-Light-Standalone.apk
+
+      - name: Attach APK to GitHub Release (on Tag Push)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ReTrack-Light-Standalone.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
